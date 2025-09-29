@@ -4,31 +4,18 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pathlib import Path
 
-# =============================================================
-#           FIX: USE ABSOLUTE IMPORTS FROM PROJECT ROOT
-# =============================================================
-from backend.app.core.config import settings
-from backend.app.db.session import engine
-from backend.app.db.base import Base
+from app.core.config import settings
+from app.db.session import engine
+from app.db.base import Base
 
-from backend.app.api import auth, users, wallets, investments, admin as admin_router
-# =============================================================
-
+from app.api import auth, users, wallets, investments, admin as admin_router
 
 # -----------------------------------------------------
-# ROBUST PATH RESOLUTION (Corrected for Render Deployment)
-#
-# Assumes the project structure: [PROJECT_ROOT]/backend/app/main.py
-# and the build output is at: [PROJECT_ROOT]/frontend/dist/
-#
-# 1. Start from the current file's directory: /.../backend/app
-SERVER_APP_DIR = Path(__file__).resolve().parent
-
-# 2. Go up two levels to the project root: /.../mana
-PROJECT_ROOT = SERVER_APP_DIR.parent.parent 
-
-# 3. Define the DIST path relative to the PROJECT_ROOT
-DIST_DIR = PROJECT_ROOT / "frontend" / "dist"
+# ROBUST PATH RESOLUTION (Mana Root is 3 levels up from main.py)
+# __file__ is in mana/backend/app/main.py
+# .parent.parent.parent resolves to the 'mana' root folder.
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+DIST_DIR = ROOT_DIR / "frontend" / "dist"
 INDEX_HTML = DIST_DIR / "index.html"
 # -----------------------------------------------------
 
@@ -36,7 +23,7 @@ INDEX_HTML = DIST_DIR / "index.html"
 # --- DEBUG PATHS ---
 # This will print the paths Uvicorn sees when it starts. Check your terminal output!
 print(f"\n--- PATH DEBUG ---")
-print(f"PROJECT_ROOT: {PROJECT_ROOT}")
+print(f"ROOT_DIR: {ROOT_DIR}")
 print(f"DIST_DIR: {DIST_DIR}")
 print(f"INDEX_HTML exists: {INDEX_HTML.exists()}")
 print(f"------------------\n")
@@ -66,40 +53,27 @@ def create_app() -> FastAPI:
     app.include_router(investments.router, prefix="/api/investments", tags=["investments"])
     app.include_router(admin_router.router, prefix="/api/admin", tags=["admin"])
 
-    # =============================================================
-    #           STATIC ASSETS & FALLBACK LOGIC
-    # =============================================================
-
-    # ------------------ STATIC ASSETS & ROOT FILES ------------------
-    # This mounts the entire 'dist' directory at the root and enables SPA fallback.
-    if DIST_DIR.is_dir():
-        # The html=True argument makes StaticFiles check for a file, and if not found, 
-        # serve index.html, which is the standard fix for React/SPA deep linking.
-        app.mount("/", StaticFiles(directory=DIST_DIR, html=True), name="static")
-        print(f"INFO: Mounted static files from {DIST_DIR}")
+    # ------------------ Static Assets ------------------
+    # Mount assets directory for CSS, JS, etc.
+    if (DIST_DIR / "assets").is_dir():
+         app.mount("/assets", StaticFiles(directory=DIST_DIR / "assets"), name="assets")
     else:
-        # This will be printed if the path resolution fails or the frontend wasn't built.
-        print(f"WARNING: Frontend distribution directory not found at {DIST_DIR}")
+         print(f"WARNING: Assets directory not found at {DIST_DIR / 'assets'}")
 
 
-    # ------------------ API/DOCS FALLBACK (Guard) ------------------
-    # This endpoint is only needed to explicitly return 404 for API/docs paths 
-    # that did not match an existing route or file.
+    # ------------------ SPA Fallback (Catch-all) ------------------
     @app.get("/{full_path:path}")
-    async def api_guard_fallback(full_path: str):
-        # The StaticFiles mount at '/' above should have handled all frontend routes.
+    async def spa_fallback(full_path: str):
+        # Don't interfere with API routes or internal FastAPI docs routes
         if full_path.startswith("api") or full_path in ["docs", "redoc", "openapi.json"]:
-            raise HTTPException(status_code=404, detail=f"Not Found: {full_path}")
+            raise HTTPException(status_code=404, detail="Not found")
         
-        # Final failsafe
+        # Serve index.html for all other paths (SPA routing)
         if INDEX_HTML.exists():
             return FileResponse(INDEX_HTML)
-
-        raise HTTPException(status_code=404, detail=f"Not Found: Frontend build files missing.")
-
-    # =============================================================
-    #                  END CORRECTED LOGIC
-    # =============================================================
+        
+        # Fallback if the file is missing (e.g., frontend not built)
+        raise HTTPException(status_code=404, detail=f"Not Found: Frontend index.html missing at {INDEX_HTML}")
 
     return app
 
