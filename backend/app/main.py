@@ -4,11 +4,16 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pathlib import Path
 
-from app.core.config import settings
-from app.db.session import engine
-from app.db.base import Base
+# =============================================================
+#           FIX: USE ABSOLUTE IMPORTS FROM PROJECT ROOT
+# =============================================================
+from backend.app.core.config import settings
+from backend.app.db.session import engine
+from backend.app.db.base import Base
 
-from app.api import auth, users, wallets, investments, admin as admin_router
+from backend.app.api import auth, users, wallets, investments, admin as admin_router
+# =============================================================
+
 
 # -----------------------------------------------------
 # ROBUST PATH RESOLUTION (Corrected for Render Deployment)
@@ -62,7 +67,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_router.router, prefix="/api/admin", tags=["admin"])
 
     # =============================================================
-    #           CORRECTED STATIC ASSETS & FALLBACK LOGIC
+    #           STATIC ASSETS & FALLBACK LOGIC
     # =============================================================
 
     # ------------------ STATIC ASSETS & ROOT FILES ------------------
@@ -83,13 +88,10 @@ def create_app() -> FastAPI:
     @app.get("/{full_path:path}")
     async def api_guard_fallback(full_path: str):
         # The StaticFiles mount at '/' above should have handled all frontend routes.
-        # This only catches non-API/non-docs routes if the StaticFiles mount failed 
-        # (which shouldn't happen) or if we are explicitly accessing an API/docs route.
         if full_path.startswith("api") or full_path in ["docs", "redoc", "openapi.json"]:
             raise HTTPException(status_code=404, detail=f"Not Found: {full_path}")
         
-        # This is a final failsafe; the StaticFiles mount should prevent this block from being hit 
-        # by serving index.html for all other paths.
+        # Final failsafe
         if INDEX_HTML.exists():
             return FileResponse(INDEX_HTML)
 
