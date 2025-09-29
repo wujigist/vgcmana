@@ -53,27 +53,45 @@ def create_app() -> FastAPI:
     app.include_router(investments.router, prefix="/api/investments", tags=["investments"])
     app.include_router(admin_router.router, prefix="/api/admin", tags=["admin"])
 
-    # ------------------ Static Assets ------------------
-    # Mount assets directory for CSS, JS, etc.
-    if (DIST_DIR / "assets").is_dir():
-         app.mount("/assets", StaticFiles(directory=DIST_DIR / "assets"), name="assets")
+    # =============================================================
+    #           CORRECTED STATIC ASSETS & FALLBACK LOGIC
+    # =============================================================
+
+    # ------------------ STATIC ASSETS & ROOT FILES ------------------
+    # This mounts the entire 'dist' directory.
+    # It will serve:
+    # 1. index.html at '/' (via its own internal logic, since it's at the root of the StaticFiles dir)
+    # 2. Files inside /assets (e.g., /assets/index-CGOTCCnk.js)
+    # 3. Other root files (favicon.ico, vite.svg, etc.)
+    if DIST_DIR.is_dir():
+        app.mount("/", StaticFiles(directory=DIST_DIR, html=True), name="static")
+        print(f"INFO: Mounted static files from {DIST_DIR}")
     else:
-         print(f"WARNING: Assets directory not found at {DIST_DIR / 'assets'}")
+        print(f"WARNING: Frontend distribution directory not found at {DIST_DIR}")
 
 
-    # ------------------ SPA Fallback (Catch-all) ------------------
+    # ------------------ SPA FALLBACK (Catch-all) ------------------
+    # The static files mount above handles the SPA index.html serving and all assets.
+    # This explicit fallback is a *backup* to catch routes that were not handled
+    # by the static mount (which already returns index.html for non-existent files)
+    # and ensures API/docs routes return 404s.
+
     @app.get("/{full_path:path}")
     async def spa_fallback(full_path: str):
-        # Don't interfere with API routes or internal FastAPI docs routes
+        # Explicitly return 404 for API/docs routes if they didn't match an actual route
         if full_path.startswith("api") or full_path in ["docs", "redoc", "openapi.json"]:
-            raise HTTPException(status_code=404, detail="Not found")
+            raise HTTPException(status_code=404, detail=f"Not Found: {full_path}")
         
-        # Serve index.html for all other paths (SPA routing)
+        # If the static mount at '/' above didn't return index.html (which it should have),
+        # then serve it explicitly here as a final fallback.
         if INDEX_HTML.exists():
             return FileResponse(INDEX_HTML)
         
-        # Fallback if the file is missing (e.g., frontend not built)
-        raise HTTPException(status_code=404, detail=f"Not Found: Frontend index.html missing at {INDEX_HTML}")
+        raise HTTPException(status_code=404, detail=f"Not Found: Frontend build files missing.")
+
+    # =============================================================
+    #                  END CORRECTED LOGIC
+    # =============================================================
 
     return app
 
