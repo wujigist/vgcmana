@@ -1,6 +1,6 @@
-# backend/app/core/config.py
-import os
-from pydantic import BaseSettings, AnyUrl, PostgresDsn, validator
+# app/core/config.py
+from pydantic import BaseSettings
+from typing import List
 
 class Settings(BaseSettings):
     DATABASE_URL: str
@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     DEBUG: bool = True
-    BACKEND_CORS_ORIGINS: list = ["*"]
+    BACKEND_CORS_ORIGINS: List[str] = ["*"]
 
     class Config:
         env_file = ".env"
