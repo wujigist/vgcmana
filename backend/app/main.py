@@ -11,11 +11,19 @@ from app.db.base import Base
 from app.api import auth, users, wallets, investments, admin as admin_router
 
 # -----------------------------------------------------
-# ROBUST PATH RESOLUTION (Mana Root is 3 levels up from main.py)
-# __file__ is in mana/backend/app/main.py
-# .parent.parent.parent resolves to the 'mana' root folder.
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent
-DIST_DIR = ROOT_DIR / "frontend" / "dist"
+# ROBUST PATH RESOLUTION (Corrected for Render Deployment)
+#
+# Assumes the project structure: [PROJECT_ROOT]/backend/app/main.py
+# and the build output is at: [PROJECT_ROOT]/frontend/dist/
+#
+# 1. Start from the current file's directory: /.../backend/app
+SERVER_APP_DIR = Path(__file__).resolve().parent
+
+# 2. Go up two levels to the project root: /.../mana
+PROJECT_ROOT = SERVER_APP_DIR.parent.parent 
+
+# 3. Define the DIST path relative to the PROJECT_ROOT
+DIST_DIR = PROJECT_ROOT / "frontend" / "dist"
 INDEX_HTML = DIST_DIR / "index.html"
 # -----------------------------------------------------
 
@@ -23,7 +31,7 @@ INDEX_HTML = DIST_DIR / "index.html"
 # --- DEBUG PATHS ---
 # This will print the paths Uvicorn sees when it starts. Check your terminal output!
 print(f"\n--- PATH DEBUG ---")
-print(f"ROOT_DIR: {ROOT_DIR}")
+print(f"PROJECT_ROOT: {PROJECT_ROOT}")
 print(f"DIST_DIR: {DIST_DIR}")
 print(f"INDEX_HTML exists: {INDEX_HTML.exists()}")
 print(f"------------------\n")
@@ -58,35 +66,33 @@ def create_app() -> FastAPI:
     # =============================================================
 
     # ------------------ STATIC ASSETS & ROOT FILES ------------------
-    # This mounts the entire 'dist' directory.
-    # It will serve:
-    # 1. index.html at '/' (via its own internal logic, since it's at the root of the StaticFiles dir)
-    # 2. Files inside /assets (e.g., /assets/index-CGOTCCnk.js)
-    # 3. Other root files (favicon.ico, vite.svg, etc.)
+    # This mounts the entire 'dist' directory at the root and enables SPA fallback.
     if DIST_DIR.is_dir():
+        # The html=True argument makes StaticFiles check for a file, and if not found, 
+        # serve index.html, which is the standard fix for React/SPA deep linking.
         app.mount("/", StaticFiles(directory=DIST_DIR, html=True), name="static")
         print(f"INFO: Mounted static files from {DIST_DIR}")
     else:
+        # This will be printed if the path resolution fails or the frontend wasn't built.
         print(f"WARNING: Frontend distribution directory not found at {DIST_DIR}")
 
 
-    # ------------------ SPA FALLBACK (Catch-all) ------------------
-    # The static files mount above handles the SPA index.html serving and all assets.
-    # This explicit fallback is a *backup* to catch routes that were not handled
-    # by the static mount (which already returns index.html for non-existent files)
-    # and ensures API/docs routes return 404s.
-
+    # ------------------ API/DOCS FALLBACK (Guard) ------------------
+    # This endpoint is only needed to explicitly return 404 for API/docs paths 
+    # that did not match an existing route or file.
     @app.get("/{full_path:path}")
-    async def spa_fallback(full_path: str):
-        # Explicitly return 404 for API/docs routes if they didn't match an actual route
+    async def api_guard_fallback(full_path: str):
+        # The StaticFiles mount at '/' above should have handled all frontend routes.
+        # This only catches non-API/non-docs routes if the StaticFiles mount failed 
+        # (which shouldn't happen) or if we are explicitly accessing an API/docs route.
         if full_path.startswith("api") or full_path in ["docs", "redoc", "openapi.json"]:
             raise HTTPException(status_code=404, detail=f"Not Found: {full_path}")
         
-        # If the static mount at '/' above didn't return index.html (which it should have),
-        # then serve it explicitly here as a final fallback.
+        # This is a final failsafe; the StaticFiles mount should prevent this block from being hit 
+        # by serving index.html for all other paths.
         if INDEX_HTML.exists():
             return FileResponse(INDEX_HTML)
-        
+
         raise HTTPException(status_code=404, detail=f"Not Found: Frontend build files missing.")
 
     # =============================================================
