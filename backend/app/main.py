@@ -10,7 +10,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Fund Manager API")
     Base.metadata.create_all(bind=engine)
 
-    allow_origins = ["*"] if settings.DEBUG else settings.BACKEND_CORS_ORIGINS
+    allow_origins = ["*"] if settings.DEBUG else settings.cors_origins
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allow_origins,
