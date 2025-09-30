@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
+// 🛑 FIX: Import Link component from the routing library (e.g., react-router-dom)
+import { Link } from "react-router-dom"; 
 import { useAuth } from "../context/AuthContext";
 import {
   fetchMyWallet,
