@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "../context/AuthContext";
 import {
   fetchMyWallet,
   fetchMyTransactions,
@@ -355,6 +355,40 @@ export default function Dashboard() {
     }
   };
 
+  // 🌟 NEW HELPER FUNCTION: Get Transaction Description
+  const getTransactionDescription = (tx) => {
+    if (tx.type === 'deposit') {
+      // 1. **Admin Credit Logic (Reference is blank/null/empty)**
+      if (!tx.reference || tx.reference.trim() === '') {
+        return "Admin Credit";
+      }
+      return tx.reference;
+    } 
+    
+    if (tx.type === 'withdrawal') {
+      try {
+        // Parse the note field to extract banking details
+        const noteObject = JSON.parse(tx.note);
+        const recipientName = noteObject.withdrawalBankDetails?.fullName;
+
+        // 2. **Withdrawal Recipient Name Only Logic**
+        if (recipientName) {
+          return `Withdrawal to ${recipientName}`;
+        }
+      } catch (e) {
+        // If JSON parsing fails, fall back to the generic reference
+        console.error("Failed to parse withdrawal note JSON:", e);
+      }
+      return tx.reference || "Unknown Withdrawal Destination";
+    }
+
+    if (tx.type === 'earning') {
+      return "Investment Earning";
+    }
+
+    return tx.reference || `Transaction ${tx.id}`;
+  };
+
 
   if (loading)
     return (
@@ -459,311 +493,246 @@ export default function Dashboard() {
         {/* Live Trade Analysis Card (The sophisticated graph) */}
         <LiveTradeAnalysisCard dailyEarnings={dailyEarnings} isPolling={isPolling} />
 
-        {/* Investments Overview (2/3 width) - ***REPLACED SECTION START*** */}
+        {/* Investments Overview (2/3 width) */}
         <section className="lg:col-span-2 bg-white p-6 rounded-xl shadow-lg border border-gray-200">
           <h2 className="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">Active Investments Overview</h2>
           
           {investments.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
-              <p>No active investments. <a href="/investments" className="text-blue-600 hover:underline font-semibold">Start Investing Now!</a></p>
+              <p>No active investments. <a href="/investments" className="text-blue-600 hover:text-blue-500 font-semibold">Explore investment packages</a> to start earning.</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {investments.slice(0, 5).map((inv) => ( // Show top 5 investments
-                <div key={inv.id} className="p-4 border border-blue-100 bg-blue-50 rounded-lg shadow-sm hover:shadow-md transition duration-200">
-                  <div className="flex justify-between items-start mb-2 border-b border-blue-200 pb-2">
-                    {/* Package Name (Header) */}
-                    <h3 className="text-lg font-bold text-blue-800">{inv.package?.name || `Package ID: ${inv.package_id}`}</h3>
-                    {/* Amount Invested */}
-                    <p className="text-xl font-extrabold text-blue-600">
-                      {formatCurrency(inv.amount_invested)}
-                    </p>
+              {investments.slice(0, 3).map((inv) => (
+                <div key={inv.id} className="border p-4 rounded-lg shadow-sm hover:shadow-md transition">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-bold text-gray-800">
+                      {inv.package?.name || "Active Package"}
+                    </h3>
+                    <span className={getStatusClasses(inv.status)}>{inv.status}</span>
                   </div>
-
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    
-                    {/* Daily Return */}
-                    <div>
-                      <p className="font-medium text-gray-500">Daily Return</p>
-                      <p className="font-semibold text-green-600">
-                        {inv.package?.daily_return ? `${parseFloat(inv.package.daily_return).toFixed(2)}%` : 'N/A'}
-                      </p>
-                    </div>
-
-                    {/* Duration Days */}
-                    <div>
-                      <p className="font-medium text-gray-500">Duration</p>
-                      <p className="font-semibold text-gray-700">
-                        {inv.package?.duration_days ? `${inv.package.duration_days} Days` : 'N/A'}
-                      </p>
-                    </div>
-                    
-                    {/* Start Date */}
-                    <div>
-                      <p className="font-medium text-gray-500">Start Date</p>
-                      <p className="font-semibold text-gray-700">
-                        {new Date(inv.start_date).toLocaleDateString()}
-                      </p>
-                    </div>
-
-                    {/* Return Date (End Date) */}
-                    <div>
-                      <p className="font-medium text-gray-500">Maturity Date</p>
-                      <p className="font-semibold text-red-500">
-                          {/* inv.end_date is already calculated in the service layer */}
-                        {inv.end_date ? new Date(inv.end_date).toLocaleDateString() : 'Pending'}
-                      </p>
-                    </div>
-
+                  <div className="flex justify-between items-center mt-2 text-sm text-gray-600">
+                    <p>Amount: <strong className="text-gray-700">{formatCurrency(inv.amount_invested)}</strong></p>
+                    <p>Daily Return: <strong className="text-green-600">{inv.package?.daily_return}%</strong></p>
+                    <p>Maturity: <strong className="text-gray-700">{inv.package?.duration_days} days</strong></p>
                   </div>
                 </div>
               ))}
-              {investments.length > 5 && (
-                  <p className="text-center text-sm text-gray-500 mt-4">
-                    Showing {investments.length} active investments. View all to see more.
-                  </p>
+              {investments.length > 3 && (
+                <div className="text-center pt-2">
+                  <Link to="/investments" className="text-blue-600 hover:text-blue-500 font-medium text-sm">
+                    View all {investments.length} investments →
+                  </Link>
+                </div>
               )}
             </div>
           )}
         </section>
-        {/* Investments Overview (2/3 width) - ***REPLACED SECTION END*** */}
+        {/* INVESTMENTS OVERVIEW END */}
       </div>
 
-      {/* 🌟 UPDATED: Transaction Form */}
-      <section className="bg-white p-6 rounded-xl shadow-lg mb-10 border border-gray-200">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4">Initiate Transaction</h2>
+      {/* TRANSACTION FORM AND HISTORY */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-        {formError && (
-          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm font-medium">
-            Error: {formError}
-          </div>
-        )}
+        {/* Transaction Form */}
+        <section className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 h-fit">
+          <h2 className="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">Manage Funds</h2>
+          
+          <form onSubmit={handleTransaction} className="space-y-4">
+            {formError && (
+              <div className="p-3 bg-red-100 text-red-700 rounded-lg text-sm">{formError}</div>
+            )}
 
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Select Transaction Type</label>
-          <div className="flex space-x-4">
-            {wallet?.allow_deposits && (
+            {/* Type Selector */}
+            <div className="flex space-x-4">
               <button
                 type="button"
                 onClick={() => setTxType("deposit")}
-                className={`flex-1 py-2.5 px-4 rounded-lg font-semibold transition ${
-                  txType === 'deposit'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'bg-gray-100 text-gray-700 hover:bg-blue-50 hover:text-blue-600 border border-gray-200'
+                className={`flex-1 py-3 rounded-lg font-semibold transition ${
+                  txType === "deposit"
+                    ? "bg-blue-600 text-white shadow-md"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                 }`}
-                disabled={isSubmitting}
               >
-                💰 Deposit
+                Deposit
               </button>
-            )}
-            {wallet?.allow_withdrawals && (
               <button
                 type="button"
                 onClick={() => setTxType("withdrawal")}
-                className={`flex-1 py-2.5 px-4 rounded-lg font-semibold transition ${
-                  txType === 'withdrawal'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'bg-gray-100 text-gray-700 hover:bg-blue-50 hover:text-blue-600 border border-gray-200'
+                className={`flex-1 py-3 rounded-lg font-semibold transition ${
+                  txType === "withdrawal"
+                    ? "bg-red-600 text-white shadow-md"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                 }`}
-                disabled={isSubmitting}
               >
-                💸 Withdrawal
+                Withdrawal
               </button>
+            </div>
+
+            {/* Amount Input */}
+            <div>
+              <label htmlFor="amount" className="block text-sm font-medium text-gray-700">Amount (USD)</label>
+              <input
+                id="amount"
+                type="number"
+                step="0.01"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                required
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-3 focus:ring-blue-500 focus:border-blue-500 text-lg"
+                placeholder="e.g., 5000.00"
+              />
+            </div>
+
+            {/* Conditional Fields for DEPOSIT */}
+            {txType === "deposit" && (
+              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
+                <p className="text-sm font-semibold text-gray-800">Deposit Address (BTC)</p>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={MOCK_BTC_ADDRESS}
+                    className="flex-1 border-dashed border border-gray-400 bg-white p-2 rounded-md text-xs sm:text-sm text-gray-700 truncate"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(MOCK_BTC_ADDRESS)}
+                    className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Send your funds to the address above. Your account will be credited upon confirmation.
+                </p>
+              </div>
+            )}
+
+            {/* Conditional Fields for WITHDRAWAL */}
+            {txType === "withdrawal" && (
+              <div className="bg-red-50 p-4 rounded-lg border border-red-200 space-y-3">
+                <h3 className="text-sm font-semibold text-red-800 border-b pb-1">Withdrawal Bank Details</h3>
+                {Object.keys(withdrawalDetails).map((key) => (
+                  <div key={key}>
+                    <label htmlFor={key} className="block text-xs font-medium text-gray-700 capitalize">
+                      {key.replace(/([A-Z])/g, ' $1').trim()}
+                    </label>
+                    <input
+                      id={key}
+                      type="text"
+                      name={key}
+                      value={withdrawalDetails[key]}
+                      onChange={handleWithdrawalDetailsChange}
+                      required={key === 'fullName' || key === 'bankName'}
+                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-sm focus:ring-red-500 focus:border-red-500"
+                      placeholder={`Enter ${key.replace(/([A-Z])/g, ' $1').trim()}`}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* User Note Input */}
+            <div>
+              <label htmlFor="note" className="block text-sm font-medium text-gray-700">Note (Optional)</label>
+              <input
+                id="note"
+                type="text"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-3 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g., Initial investment / Monthly withdrawal"
+              />
+            </div>
+
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={isSubmitting || !wallet || wallet.status.toLowerCase() === 'frozen'}
+              className={`w-full py-3 rounded-lg font-bold text-white transition duration-150 ${
+                isSubmitting || !wallet || wallet.status.toLowerCase() === 'frozen'
+                  ? 'bg-gray-400 cursor-not-allowed'
+                  : txType === "deposit"
+                  ? 'bg-blue-600 hover:bg-blue-700 shadow-lg'
+                  : 'bg-red-600 hover:bg-red-700 shadow-lg'
+              }`}
+            >
+              {isSubmitting
+                ? "Processing..."
+                : txType === "deposit"
+                ? "Initiate Deposit"
+                : "Submit Withdrawal Request"}
+            </button>
+            
+            {wallet?.status.toLowerCase() === 'frozen' && (
+              <p className="text-red-500 text-sm text-center">Wallet is frozen. Contact support.</p>
+            )}
+          </form>
+        </section>
+
+        {/* Transaction History */}
+        <section className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+          <h2 className="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">Recent Transactions</h2>
+          
+          <div className="overflow-x-auto">
+            {transactions.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">No transaction history found.</p>
+            ) : (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                    <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {transactions.slice(0, 10).map((tx) => (
+                    <tr key={tx.id}>
+                      <td className="px-3 py-4 whitespace-nowrap">
+                        <span className={`text-sm font-semibold capitalize ${
+                          tx.type === 'deposit' || tx.type === 'earning' ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          {tx.type}
+                        </span>
+                      </td>
+                      <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-800 max-w-xs truncate">
+                        {/* 🌟 UPDATED DISPLAY LOGIC HERE */}
+                        {getTransactionDescription(tx)}
+                      </td>
+                      <td className="px-3 py-4 whitespace-nowrap text-right">
+                        <span className={`text-sm font-bold ${
+                          tx.type === 'deposit' || tx.type === 'earning' ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          {tx.type === 'withdrawal' ? '-' : '+'}
+                          {formatCurrency(tx.amount)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-4 whitespace-nowrap text-center">
+                        <span className={getStatusClasses(tx.status)}>{tx.status}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
-        </div>
-
-        {/* 🌟 NEW: BTC Deposit Note */}
-        {txType === 'deposit' && (
-          <div className="p-4 mb-6 bg-yellow-50 border-l-4 border-yellow-500 text-yellow-800 rounded-md">
-            <p className="font-bold text-sm mb-1 flex items-center">
-              <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.487 0l5.54 9.8c.765 1.36-.212 3.051-1.743 3.051H4.46c-1.531 0-2.508-1.691-1.743-3.051l5.54-9.8zM11 15a1 1 0 10-2 0 1 1 0 002 0zm-1-6a1 1 0 00-1 1v3a1 1 0 102 0v-3a1 1 0 00-1-1z" clipRule="evenodd"></path></svg>
-              Deposit Instructions:
-            </p>
-            <p className="text-sm">To ensure your deposit reflects, please send the **Bitcoin (BTC)** to the following wallet address. After sending, fill in the estimated USD amount below and submit the transaction.</p>
-            <div className="mt-2 p-2 bg-yellow-100 border border-yellow-300 rounded-lg text-xs font-mono break-all flex justify-between items-center">
-              <span className="truncate">{MOCK_BTC_ADDRESS}</span>
-              <button
-                type="button"
-                onClick={() => navigator.clipboard.writeText(MOCK_BTC_ADDRESS)}
-                className="ml-3 text-blue-600 hover:text-blue-800 font-semibold"
-              >
-                Copy
-              </button>
-            </div>
-          </div>
-        )}
-        {/* 🌟 END NEW: BTC Deposit Note */}
-
-        <form onSubmit={handleTransaction} className="space-y-4">
-
-          {/* 🌟 NEW: Withdrawal Bank Details Form Fields */}
-          {txType === 'withdrawal' && (
-            <div className="space-y-3 p-4 border border-blue-200 bg-blue-50 rounded-lg">
-              <h3 className="text-lg font-bold text-blue-800 mb-2">Bank Withdrawal Details</h3>
-
-              <InputField
-                id="fullName"
-                label="Full Name (Account Holder)"
-                name="fullName"
-                value={withdrawalDetails.fullName}
-                onChange={handleWithdrawalDetailsChange}
-                placeholder="John Doe"
-                required={true}
-                disabled={isSubmitting}
-              />
-
-              <InputField
-                id="bankName"
-                label="Bank Name"
-                name="bankName"
-                value={withdrawalDetails.bankName}
-                onChange={handleWithdrawalDetailsChange}
-                placeholder="Example Bank, N.A."
-                required={true}
-                disabled={isSubmitting}
-              />
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <InputField
-                  id="accountNumber"
-                  label="Account Number / IBAN"
-                  name="accountNumber"
-                  value={withdrawalDetails.accountNumber}
-                  onChange={handleWithdrawalDetailsChange}
-                  placeholder="e.g., US: 1234567890, EU: DE8937040044053242"
-                  required={true}
-                  disabled={isSubmitting}
-                />
-                <InputField
-                  id="swiftBicCode"
-                  label="SWIFT/BIC Code"
-                  name="swiftBicCode"
-                  value={withdrawalDetails.swiftBicCode}
-                  onChange={handleWithdrawalDetailsChange}
-                  placeholder="e.g., CHASUS33"
-                  required={true}
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <InputField
-                id="routingNumber"
-                label="Routing Number (Optional for some)"
-                name="routingNumber"
-                value={withdrawalDetails.routingNumber}
-                onChange={handleWithdrawalDetailsChange}
-                placeholder="e.g., 012345678"
-                required={false}
-                disabled={isSubmitting}
-              />
+          
+          {transactions.length > 10 && (
+            <div className="text-center pt-4 border-t mt-4">
+              <Link to="/transactions" className="text-blue-600 hover:text-blue-500 font-medium text-sm">
+                View All Transactions →
+              </Link>
             </div>
           )}
-          {/* 🌟 END NEW: Withdrawal Bank Details Form Fields */}
+        </section>
+      </div>
 
-          <div className="flex-1">
-            <label htmlFor="amount" className="block text-sm font-medium text-gray-700 mb-1">Amount ({txType === 'deposit' ? 'USD Equivalent' : 'USD'})</label>
-            <input
-              id="amount"
-              type="number"
-              step="0.01"
-              placeholder="0.00"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="w-full border border-gray-300 focus:border-blue-500 focus:ring-blue-500 px-4 py-2 rounded-lg transition"
-              required
-              disabled={isSubmitting}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="note" className="block text-sm font-medium text-gray-700 mb-1">
-              {txType === 'deposit' ? 'Note/Reference (Optional, e.g., TX Hash, exchange name)' : 'User Note (Optional)'}
-            </label>
-            <input
-              id="note"
-              type="text"
-              placeholder={txType === 'deposit' ? "TX Hash, e.g., 0xAB12... or CoinBase" : "Reason for withdrawal (e.g., 'personal funds')"}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className="w-full border border-gray-300 focus:border-blue-500 focus:ring-blue-500 px-4 py-2 rounded-lg transition"
-              disabled={isSubmitting}
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="w-full sm:w-auto bg-blue-600 text-white font-semibold py-2.5 px-6 rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
-            disabled={isSubmitting || !amount}
-          >
-            {isSubmitting ? "Processing..." : `Submit ${txType}`}
-          </button>
-        </form>
-      </section>
-
-      {/* Recent Transactions (No Change) */}
-      <section>
-        <h2 className="text-2xl font-bold text-gray-800 mb-4">Recent Transactions</h2>
-        <div className="overflow-x-auto shadow-xl rounded-lg border">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Type</th>
-                <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider hidden sm:table-cell">Note</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Date</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {transactions.length === 0 ? (
-                <tr>
-                  <td colSpan="5" className="text-center py-4 text-gray-500">No recent transactions.</td>
-                </tr>
-              ) : (
-                transactions.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-gray-50 transition duration-150">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 capitalize">{tx.type}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono text-gray-700">
-                      {formatCurrency(tx.amount)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={getStatusClasses(tx.status)}>
-                        {tx.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden sm:table-cell">{tx.note || "-"}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(tx.created_at).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
+      <div className="text-center mt-10 p-4 text-gray-500 text-sm">
+        <p>&copy; {new Date().getFullYear()} VGC. All rights reserved. | <button onClick={logout} className="text-red-500 hover:text-red-600">Logout</button></p>
+      </div>
     </div>
   );
 }
-
-// 🌟 NEW Helper Component for cleaner form fields
-const InputField = ({ id, label, name, value, onChange, placeholder, required, disabled }) => (
-  <div>
-    <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
-      {label} {required && <span className="text-red-500">*</span>}
-    </label>
-    <input
-      id={id}
-      type="text"
-      name={name}
-      value={value}
-      onChange={onChange}
-      placeholder={placeholder}
-      className="w-full border border-gray-300 focus:border-blue-500 focus:ring-blue-500 px-4 py-2 rounded-lg transition text-sm"
-      required={required}
-      disabled={disabled}
-    />
-  </div>
-);
